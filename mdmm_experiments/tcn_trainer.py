@@ -16,6 +16,8 @@ from torch.optim import Adam
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
+from gnn_tracking.metrics.losses import PotentialLoss
+
 from gnn_tracking.metrics.binary_classification import (
     BinaryClassificationStats,
     get_maximized_bcs,
@@ -120,7 +122,7 @@ class TCNTrainer:
         self.clustering_functions = cluster_functions
 
         self.optimizer = optimizer(self.model.parameters(), lr=lr)
-        self.optimizer_l = optimizer(self.l_multipliers, lr=lr)
+        self.optimizer_l = optimizer(self.l_multipliers, maximize=True, lr=lr)
 
         self._lr_scheduler = lr_scheduler(self.optimizer) if lr_scheduler else None
         #: Where to step the scheduler: Either epoch or batch
@@ -256,26 +258,36 @@ class TCNTrainer:
         main_losses_weights = collections.defaultdict(lambda: 1.0)
         constraints = collections.defaultdict(lambda: 1.0)
 
+        potential_loss = None
+
         for key, (loss_func, these_weights) in self.main_loss_functions.items():
             # We need to unpack depending on whether the loss function returns a
             # single value, a list of values, or a dictionary of values.
-            this_loss = loss_func(**model_output)
-            if isinstance(this_loss, Mapping):
-                for k in this_loss.copy():
-                    if k not in these_weights:
-                        this_loss.pop(k)
-            main_losses.update(unpack_loss_returns(key, this_loss))
+            if isinstance(loss_func, PotentialLoss):
+                if potential_loss is None:
+                    potential_loss = loss_func(**model_output)
+                
+                for k in these_weights:
+                    main_losses.update(unpack_loss_returns(key, {k:potential_loss[k]}))
+
+            else:
+                main_losses.update(unpack_loss_returns(key, loss_func(**model_output)))
+            
             main_losses_weights.update(unpack_loss_returns(key, these_weights))
         
         for key, (loss_func, these_constraints) in self.constraint_loss_functions.items():
             # We need to unpack depending on whether the loss function returns a
             # single value, a list of values, or a dictionary of values.
-            this_loss = loss_func(**model_output)
-            if isinstance(this_loss, Mapping):
-                for k in this_loss.copy():
-                    if k not in these_constraints:
-                        this_loss.pop(k)
-            constraint_losses.update(unpack_loss_returns(key, this_loss))
+            if isinstance(loss_func, PotentialLoss):
+                if potential_loss is None:
+                    potential_loss = loss_func(**model_output)
+                
+                for k in these_constraints:
+                    constraint_losses.update(unpack_loss_returns(key, {k:potential_loss[k]}))
+
+            else:
+                constraint_losses.update(unpack_loss_returns(key, loss_func(**model_output)))
+            
             constraints.update(unpack_loss_returns(key, these_constraints))
 
         total = sum(main_losses_weights[k] * main_losses[k] for k in main_losses)
@@ -400,10 +412,6 @@ class TCNTrainer:
                 self.optimizer_l.zero_grad(set_to_none=True)
 
                 batch_loss.backward()
-                for group in self.optimizer_l.param_groups:
-                    for p in group['params']:
-                        if p.grad is not None:
-                            p.grad = -1*p.grad
 
                 self.optimizer.step()
                 self.optimizer_l.step()
