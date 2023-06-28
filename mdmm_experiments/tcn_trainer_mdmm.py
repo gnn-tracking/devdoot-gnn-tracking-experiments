@@ -34,7 +34,7 @@ from gnn_tracking.utils.log import get_logger
 from gnn_tracking.utils.nomenclature import denote_pt
 from gnn_tracking.utils.timing import Timer
 
-loss_constraint_type = Union[float, dict[str, tuple[float, float]], list[float]]
+loss_constraint_type = Union[tuple[float, float, float], dict[str, tuple[float, float, float]], list[tuple[float, float, float]]]
 #: Function type that can be used as hook for the training/test step in the
 #: `TCNTrainer` class. The function takes the trainer instance as first argument and
 #: a dictionary of losses/metrics as second argument.
@@ -74,10 +74,15 @@ class TCNTrainer:
             model: The model to train
             loaders: The data loaderes to use. The keys must be ``train``, ``test`` and
                 ``val``. The values can be either a `DataLoader` or a list of `Data`.
-            loss_functions: Dictionary of loss functions and their weights, keyed by
+            main_loss_functions: Dictionary of main loss functions and their weights, keyed by
                 loss name. The weights can be specified as (1) float (2) list of floats
                 (if the loss function returns a list of losses) or (3) dictionary of
                 floats (if the loss function returns a dictionary of losses).
+            constraint_loss_functions: Dictionary of constraint loss functions and their weights, epsilons,
+                and damping factors keyed by loss name. The weights can be specified as
+                (1) tuple of 3 floats (2) list of tuple of 3 floats
+                (if the loss function returns a list of losses) or (3) dictionary of
+                tuple of 3 floats (if the loss function returns a dictionary of losses).
             device:
             lr: Learning rate
             optimizer: Optimizer to use (default: Adam): Function. Will be called with
@@ -310,10 +315,10 @@ class TCNTrainer:
         total = sum(main_losses_weights[k] * main_losses[k] for k in main_losses)
 
         for k in constraint_losses:
-            infeasibility = constraint_losses[k] - constraints[k][0]
+            infeasibility = constraint_losses[k] - constraints[k][1]
             l_term = self.l_multipliers[self.l_multipliers_mapper[k]] * infeasibility
-            damp = constraints[k][1] * (infeasibility**2 / 2) # damping=10
-            total += (l_term + damp)
+            damp = constraints[k][2] * (infeasibility**2 / 2) # damping=10
+            total += constraints[k][0]*(l_term + damp)
 
         if torch.isnan(total):
             raise RuntimeError(
@@ -365,12 +370,14 @@ class TCNTrainer:
         batch_idx: int,
         batch_loss,
         main_losses: dict[str, Tensor | float],
-        constraint_losses: dict[str, Tensor | float]
+        constraint_losses: dict[str, Tensor | float],
+        main_losses_weights,
+        constraints
     ) -> None:
         ret = f"Epoch {self._epoch:>1} ({batch_idx:>5}/{len(self.train_loader)}): "
         losses = {"Total": batch_loss.item()}
-        losses.update({k: main_losses[k] for k in main_losses})
-        losses.update({k: constraint_losses[k] for k in constraint_losses})
+        losses.update({k: main_losses[k]*main_losses_weights[k] for k in main_losses})
+        losses.update({k: constraint_losses[k]*constraints[k][0] for k in constraint_losses})
         ret += ", ".join(f"{k}={v:>10.5f}" for k, v in losses.items())
         # ret += " (weighted)"
         self.logger.debug(ret)
@@ -458,7 +465,7 @@ class TCNTrainer:
                 hook(self, self._epoch, batch_idx, model_output, data)
 
             if (batch_idx % 10) == 0:
-                self._log_losses(batch_idx, batch_loss, main_losses, constraint_losses)
+                self._log_losses(batch_idx, batch_loss, main_losses, constraint_losses, main_losses_weights, constraints)
 
             _losses["total"].append(batch_loss.item())
             for key, loss in main_losses.items():
@@ -466,6 +473,7 @@ class TCNTrainer:
                 _losses[f"{key}_weighted"].append(loss.item() * main_losses_weights[key])
             for key, loss in constraint_losses.items():
                 _losses[f"{key}"].append(loss.item())
+                _losses[f"{key}_weighted"].append(loss.item() * constraints[key][0])
 
         if self._lr_scheduler and self.lr_scheduler_step == "epoch":
             self._lr_scheduler.step()
@@ -524,8 +532,8 @@ class TCNTrainer:
                 )
             for key, value in constraint_losses.items():
                 batch_metrics[key].append(value.item())
-                batch_metrics[f"{key}"].append(
-                    value.item()
+                batch_metrics[f"{key}_weighted"].append(
+                    value.item() * constraints[key][0]
                 )
 
             for key, value in self.evaluate_ec_metrics(
