@@ -16,21 +16,21 @@ from torch.optim import Adam
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
-from gnn_tracking.metrics.binary_classification import (
+from gnn_tracking_legacy.metrics.binary_classification import (
     BinaryClassificationStats,
     get_maximized_bcs,
     roc_auc_score,
 )
-from gnn_tracking.metrics.losses import (
+from gnn_tracking_legacy.metrics.losses import (
     LossFctType,
     loss_weight_type,
     unpack_loss_returns,
 )
-from gnn_tracking.postprocessing.clusterscanner import ClusterFctType
-from gnn_tracking.utils.device import guess_device
-from gnn_tracking.utils.log import get_logger
-from gnn_tracking.utils.nomenclature import denote_pt
-from gnn_tracking.utils.timing import Timer
+from gnn_tracking_legacy.postprocessing.clusterscanner import ClusterFctType
+from gnn_tracking_legacy.utils.device import guess_device
+from gnn_tracking_legacy.utils.log import get_logger
+from gnn_tracking_legacy.utils.nomenclature import denote_pt
+from gnn_tracking_legacy.utils.timing import Timer
 
 #: Function type that can be used as hook for the training/test step in the
 #: `TCNTrainer` class. The function takes the trainer instance as first argument and
