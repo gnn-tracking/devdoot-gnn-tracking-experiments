@@ -1,4 +1,4 @@
 *.pt
 lightning_logs/
 .ipynb_checkpoints/
-
+wandb/
