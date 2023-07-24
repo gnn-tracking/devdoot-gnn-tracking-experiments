@@ -1,0 +1,15 @@
+train:
+  dirs:
+    - /scratch/gpfs/IOJALVO/gnn-tracking/object_condensation/point_clouds_v5/part_1/
+    - /scratch/gpfs/IOJALVO/gnn-tracking/object_condensation/point_clouds_v5/part_2/
+    - /scratch/gpfs/IOJALVO/gnn-tracking/object_condensation/point_clouds_v5/part_3/
+    - /scratch/gpfs/IOJALVO/gnn-tracking/object_condensation/point_clouds_v5/part_4/
+    - /scratch/gpfs/IOJALVO/gnn-tracking/object_condensation/point_clouds_v5/part_5/
+    - /scratch/gpfs/IOJALVO/gnn-tracking/object_condensation/point_clouds_v5/part_6/
+    - /scratch/gpfs/IOJALVO/gnn-tracking/object_condensation/point_clouds_v5/part_7/
+    - /scratch/gpfs/IOJALVO/gnn-tracking/object_condensation/point_clouds_v5/part_8/
+val:
+  dirs:
+    - /scratch/gpfs/IOJALVO/gnn-tracking/object_condensation/point_clouds_v5/part_9/
+  stop: 50
+cpus: 6
