@@ -17,8 +17,8 @@ export NCCL_DEBUG=INFO
 export PYTHONFAULTHANDLER=1
 
 srun \
-  python3 run_graph_construction.py fit\
-  --model configs/gc/model.yml \
+  python3 run_graph_construction_mdmm.py fit\
+  --model configs/gc_mdmm/model.yml \
   --trainer configs/gc/train.yml \
   --data configs/gc/data.yml \
   $@

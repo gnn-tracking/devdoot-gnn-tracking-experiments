@@ -3,7 +3,7 @@ from __future__ import annotations
 import wandb
 from gnn_tracking.utils.loading import TrackingDataModule
 from gnn_tracking.utils.nomenclature import random_trial_name
-from gnn_tracking.training.callbacks import PrintValidationMetrics
+from gnn_tracking.training.callbacks import PrintValidationMetrics, ExpandWandbConfig
 
 from pytorch_lightning.callbacks import TQDMProgressBar, ModelCheckpoint, RichProgressBar
 from pytorch_lightning.cli import LightningCLI
@@ -17,7 +17,7 @@ name = random_trial_name()
 
 early_stopping_callback = EarlyStopping(
     monitor='n_edges_frac_segment50_95',
-    patience=5,
+    patience=20,
     mode='min',
     check_finite=False
 )
@@ -32,7 +32,7 @@ checkpoint_callback = ModelCheckpoint(
 
 logger = WandbLogger(
     project="mdmm",
-    group="graph-construction",
+    group="graph-construction-k=(1-10)",
     offline=True,
     version=name,
 )
@@ -51,6 +51,7 @@ def cli_main():
                 PrintValidationMetrics(),
                 TQDMProgressBar(refresh_rate=5),
                 TriggerWandbSyncLightningCallback(),
+                ExpandWandbConfig()
             ],
             "logger": [tb_logger, logger],
             "plugins": [SLURMEnvironment()],
