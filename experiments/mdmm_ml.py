@@ -1,5 +1,5 @@
 """Pytorch lightning module with training and validation step for the metric learning
-approach to graph construction.
+approach to graph construction using MDMM.
 """
 
 # Ignore unused arguments because of save_hyperparameters
@@ -39,6 +39,21 @@ class MDMMMLModule(TrackingModule):
     ):
         """Pytorch lightning module with training and validation step for the metric
         learning approach to graph construction.
+
+        Args:
+            lr_params: The learning rate for the model paramers and the slack variables (to satisfy the
+                inequality constraints).
+            lr_lambda: The learning rate for the Lagrange multiplier (has to be a negative floating point number).
+            main_losses: Dictionary of main loss functions and their weights, keyed by loss name.
+            constraint_losses: Dictionary of constraint loss functions and their respective hyperparameters
+                (type, weights, epsilons, and damping factors) keyed by loss name.
+                The hyperparameters for a particular constrained loss are to be specified as a dictionary
+                consisting of 4 key-value pairs:
+                1. type (string): The constraint type can be "equal", "min", or "max".
+                2. epsilon (float): The constraint function value. MDMM ensures that the constraint loss converges
+                       to this value.
+                3. damping_factor (float): A quadratic damping term is also added to ensure smooth convergence.
+                4. weight (float): Scales the entire loss term.
         """
         super().__init__(**kwargs)
 
@@ -52,7 +67,10 @@ class MDMMMLModule(TrackingModule):
                                   "constraint_losses",
                                 )
         
+         # Maps the constraint loss functions to the index of their respective Lagrangian multipliers.
         self.l_multipliers_mapper = {}
+
+        # Maps the constraint loss functions to the index of their respective slack variables.
         self.max_slack_mapper = {}
         self.min_slack_mapper = {}
 
@@ -67,8 +85,13 @@ class MDMMMLModule(TrackingModule):
                 self.min_slack_mapper[key] = int(min_constraint)
                 min_constraint += 1
         
+        # List of Lagrangian multipliers for the constraint loss functions.
         self.l_multipliers = [nn.Parameter((torch.tensor(0, dtype=torch.float32))) for _ in range(len(constraint_losses))]
+        
+        # List of slack variables for the constraint loss functions with a maximum constraint.
         self.max_slacks = [nn.Parameter(torch.as_tensor(float('nan'), device=self.device)) for _ in range(max_constraint)]
+        
+        # List of slack variables for the constraint loss functions with a minimum constraint.
         self.min_slacks = [nn.Parameter(torch.as_tensor(float('nan'), device=self.device)) for _ in range(min_constraint)]
         
         self.loss_fct: GraphConstructionHingeEmbeddingLoss = obj_from_or_to_hparams(
@@ -102,7 +125,7 @@ class MDMMMLModule(TrackingModule):
         loss = sum(loss_dct[k] * v for k, v in lws_main.items())
 
         for k, v in constraints.items():
-            infeasibility = loss_dct[k] - v["epsilon"]
+            infeasibility = loss_dct[k] - v["epsilon"] # infeasibility = g(x) - ε
 
             if v["type"]=="max":
 
@@ -110,6 +133,9 @@ class MDMMMLModule(TrackingModule):
                     with torch.no_grad():
                         self.max_slacks[self.max_slack_mapper[k]].copy_((v["epsilon"]-loss_dct[k]).relu().pow(1/2))
 
+                # g(x) <= ε
+                # => g(x) - ε <= 0
+                # => g(x) - ε + slack^2 = 0
                 infeasibility += self.max_slacks[self.max_slack_mapper[k]]**2
 
             if v["type"]=="min":
@@ -118,10 +144,15 @@ class MDMMMLModule(TrackingModule):
                     with torch.no_grad():
                         self.min_slacks[self.min_slack_mapper[k]].copy_((loss_dct[k]-v["epsilon"]).relu().pow(1/2))
 
+                # g(x) >= ε
+                # => g(x) - ε >= 0
+                # => g(x) - ε - slack^2 = 0
                 infeasibility -= self.min_slacks[self.min_slack_mapper[k]]**2
 
-            l_term = self.l_multipliers[self.l_multipliers_mapper[k]] * infeasibility
-            damp = v["damping_factor"] * (infeasibility**2 / 2)
+            l_term = self.l_multipliers[self.l_multipliers_mapper[k]] * infeasibility # Lagrangian term = λ*infeasibility
+
+            # Quadratic damping term to reduce oscillations.
+            damp = v["damping_factor"] * (infeasibility**2 / 2) # c*(infeasibility^2 / 2)
             loss += v["weight"]*(l_term + damp)
 
         loss_dct["total"] = loss
@@ -167,6 +198,7 @@ class MDMMMLModule(TrackingModule):
         ]
     
     def configure_optimizers(self) -> Any:
+        # 'params' is a list of all the parameters- model parameters, Lagrange multipliers, and slack variables.
         params = [{'params':self.model.parameters(), 'lr':self.lr_params},]
         
         if len(self.l_multipliers):

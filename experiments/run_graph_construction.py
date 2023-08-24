@@ -46,7 +46,7 @@ def cli_main():
         datamodule_class=TrackingDataModule,
         trainer_defaults={
             "callbacks": [
-                early_stopping_callback,
+                # early_stopping_callback,
                 checkpoint_callback,
                 PrintValidationMetrics(),
                 TQDMProgressBar(refresh_rate=5),
