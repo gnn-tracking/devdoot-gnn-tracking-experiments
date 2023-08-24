@@ -1,5 +1,6 @@
 *.pt
 lightning_logs/
 .ipynb_checkpoints/
+__pycache__/
 wandb/
 slurm_logs/
