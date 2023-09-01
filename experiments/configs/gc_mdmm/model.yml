@@ -8,22 +8,25 @@ init_args:
       depth: 6
       hidden_dim: 256
       beta: 0.4
-  loss_fct:
-    class_path: gnn_tracking.metrics.losses.GraphConstructionHingeEmbeddingLoss
-    init_args:
-      r_emb: 1
-      max_num_neighbors: 256
-      attr_pt_thld: 0.9
-      p_attr: 2
-      p_rep: 2
+  loss_fcts:
+    embedding_loss:
+      class_path: gnn_tracking.metrics.losses.GraphConstructionHingeEmbeddingLoss
+      init_args:
+        r_emb: 1
+        max_num_neighbors: 256
+        attr_pt_thld: 0.9
+        p_attr: 2
+        p_rep: 2
   main_losses:
-    attractive: 1.0
+    embedding_loss:
+      attractive: 1.0
   constraint_losses:
-    repulsive:
-      type: "max"
-      weight: 0.05
-      epsilon: 6.196713924407959
-      damping_factor: 0.1
+    embedding_loss:
+      repulsive:
+        type: "max"
+        weight: 0.05
+        epsilon: 3.161752223968506
+        damping_factor: 0.1
   lr_params: 0.0007
   lr_lambda: -0.0007
   gc_scanner:
